@@ -1,0 +1,14 @@
+src/simulator/decode.o
+src/simulator/main.o
+src/simulator/memory_map.o
+src/simulator/registers.o
+bin/mips_testbench
+bin/mips_simulator.exe
+bin/mips_simulator
+bin/
+.DS_Store
+src/.DS_Store
+src/testbench/.DS_Store
+src/testbench/binaries/.DS_Store
+test/
+.vscode/settings.json
