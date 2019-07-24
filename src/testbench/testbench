@@ -1,0 +1,87 @@
+#!/bin/bash
+
+if [ -f $1 ]; then
+	sim=$1
+	TestId=0 #set test counter/id to 0
+	test_timeout=15 #timeout in seconds
+	mkdir -p test test/temp
+	mkdir -p test test/output
+	chmod u+x $sim
+
+	for bin_name in src/testbench/c-code/*.c #goes through all c files
+	do
+		tmp=$(echo $bin_name| cut  -d'.' -f 1)
+		make $tmp.bin > test/temp/TBlog.txt
+	done
+
+	for bin_name in src/testbench/binaries/*.bin src/testbench/c-code/*.bin #goes through all binary files
+	do
+		instr=$(echo $bin_name| sed 's:^src/testbench/binaries/::')
+		instr=$(echo $instr| sed 's:^src/testbench/c-code/::')
+		instr=$(echo $instr| cut -d'_' -f 1) #takes relevant elements out of file name
+		author=$(echo $bin_name| cut -d'_' -f 2)
+		expected_output=$(echo $bin_name| cut -d'_' -f 3)
+		temp=$(echo $bin_name| cut -d'_' -f 4)
+		name=$(echo $temp| cut -d'.' -f 1)
+
+		function output {
+                        if [ "$1" -eq "124" ]; then
+                                printf "$TestId,$instr,Fail,$author,Timeout exceeded\n"
+			elif [ "$1" -eq "$2" ]; then  #checks if expected output matches sim output
+				status="Pass"
+				printf "$TestId,$instr,$status,$author\n" #writes to stdout or csv file
+			else
+				status="Fail"
+				if [ "$1" -eq "246" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $2 but got $1 - Arithmetic Exception\n"
+				elif [ "$1" -eq "245" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $2 but got $1 - Memory Exception\n"
+				elif [ "$1" -eq "244" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $2 but got $1 - Invalid instruction\n"
+				elif [ "$1" -eq "236" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $2 but got $1 - Internal Error\n"
+				elif [ "$1" -eq "235" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $2 but got $1 - I/O Error\n"
+				else
+					printf "$TestId,$instr,$status,$author,Expected $2 but got $1\n"
+				fi
+			fi
+		}
+
+		if [[ "$name" == *"PUTC"* ]]; then
+			timeout $test_timeout $sim $bin_name > test/output/"$TestId"_"$instr"
+			sim_exit=$?
+			expected_print=$(<"$(echo $bin_name| cut -d'.' -f 1).txt")
+			printed=$(<"test/output/"$TestId"_"$instr"")
+			if [ "$sim_exit" -eq "124" ]; then
+                                printf "$TestId,$instr,Fail,$author,Timeout exceeded\n"
+			elif [ "$sim_exit" -eq "$expected_output" ] && [ "$expected_print" = "$printed" ]; then  #checks if expected output matches sim output
+				status="Pass"
+				printf "$TestId,$instr,$status,$author\n" #writes to stdout or csv file
+			else
+				status="Fail"
+				if [ "$sim_exit" -ne "$expected_output" ] && [ "$expected_print" != "$printed" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $expected_output but got $sim_exit and expected $expected_print but got $printed\n"
+				elif [ "$sim_exit" -ne "$expected_output" ]; then
+					printf "$TestId,$instr,$status,$author,Expected $expected_output but got $sim_exit\n"
+				else
+					printf "$TestId,$instr,$status,$author,Expected $expected_print but got $printed\n"
+				fi
+			fi
+
+		elif [[ "$name" == *"GETC"* ]]; then
+			file=$(echo $bin_name| cut -d'.' -f 1)
+			testInput=$(<"$file.txt")
+			timeout $test_timeout $sim $bin_name  <<< $testInput #runs the simulator using a binary
+			output $? $expected_output
+		else
+			timeout $test_timeout $sim $bin_name
+			output $? $expected_output 
+		fi
+
+    	TestId=$((TestId+1)) #increments test number
+	done
+
+else
+	echo "Simulator doesn't exist" #sim doesn't exist
+fi
